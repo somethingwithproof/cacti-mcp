@@ -1,0 +1,54 @@
+[build-system]
+requires = ['hatchling>=1.27,<2']
+build-backend = 'hatchling.build'
+
+[project]
+name = 'cacti-mcp'
+version = '0.1.0'
+description = 'MCP adapter for the Cacti Abilities plugin'
+readme = 'README.md'
+requires-python = '>=3.12'
+license = 'GPL-2.0-or-later'
+authors = [{name = 'Thomas Vincent'}]
+classifiers = [
+    'Development Status :: 3 - Alpha',
+    'Environment :: Console',
+    'Framework :: AsyncIO',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
+    'Topic :: System :: Monitoring',
+]
+dependencies = ['mcp>=1.23.3,<2', 'httpx>=0.28.1,<0.29']
+
+[project.scripts]
+cacti-mcp = 'cacti_mcp.server:main'
+
+[project.urls]
+Repository = 'https://github.com/somethingwithproof/cacti-mcp'
+Issues = 'https://github.com/somethingwithproof/cacti-mcp/issues'
+
+[dependency-groups]
+dev = ['pytest>=9,<10', 'ruff>=0.15,<0.16']
+
+[tool.hatch.build.targets.wheel]
+packages = ['src/cacti_mcp']
+
+[tool.hatch.build.targets.sdist]
+include = ['/src', '/tests', '/docs', '/images', '/README.md', '/LICENSE', '/pyproject.toml', '/uv.lock']
+
+[tool.pytest.ini_options]
+testpaths = ['tests']
+pythonpath = ['src']
+addopts = '-ra'
+
+[tool.ruff]
+target-version = 'py312'
+line-length = 79
+
+[tool.ruff.lint]
+select = ['E', 'F', 'I', 'UP', 'B']
+
+[tool.ruff.format]
+quote-style = 'single'
