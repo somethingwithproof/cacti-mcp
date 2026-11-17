@@ -32,17 +32,20 @@ async def test_cookie_csrf_handshake_and_fresh_discovery():
         assert request.headers['authorization'] == f'Bearer {TOKEN}'
         if request.method == 'GET':
             return httpx.Response(
-                200, json=CATALOG,
+                200,
+                json=CATALOG,
                 headers={'set-cookie': 'Cacti=fixture; Path=/; Secure'},
             )
         assert request.headers['cookie'] == 'Cacti=fixture'
         data = parse_qs(request.content.decode())
         assert data['__csrf_magic'] == ['fixture']
         assert json.loads(data['request'][0]) == {
-            'name': 'cacti.devices.get', 'arguments': {'id': 7},
+            'name': 'cacti.devices.get',
+            'arguments': {'id': 7},
         }
         return httpx.Response(
-            200, json={'requestId': 'b' * 32, 'result': {'id': 7}},
+            200,
+            json={'requestId': 'b' * 32, 'result': {'id': 7}},
         )
 
     async with AbilitiesClient(
@@ -63,7 +66,8 @@ async def test_revoked_permission_prevents_post():
     def handler(request):
         methods.append(request.method)
         return httpx.Response(
-            200, json={**CATALOG, 'abilities': []},
+            200,
+            json={**CATALOG, 'abilities': []},
         )
 
     async with AbilitiesClient(
@@ -82,7 +86,9 @@ async def test_http_errors_do_not_follow_redirects_or_expose_bodies(status):
     def handler(request):
         requests.append(request)
         return httpx.Response(
-            status, text=TOKEN, headers={'location': 'https://other.example'},
+            status,
+            text=TOKEN,
+            headers={'location': 'https://other.example'},
         )
 
     async with AbilitiesClient(
@@ -95,37 +101,45 @@ async def test_http_errors_do_not_follow_redirects_or_expose_bodies(status):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize('payload', [
-    [], {}, {**CATALOG, 'apiVersion': '2'},
-    {**CATALOG, 'csrfToken': ''},
-    {**CATALOG, 'abilities': [TOOL, TOOL]},
-    {**CATALOG, 'abilities': [{**TOOL, 'readOnly': False}]},
-    {**CATALOG, 'abilities': [{**TOOL, 'name': '../execute'}]},
-])
+@pytest.mark.parametrize(
+    'payload',
+    [
+        [],
+        {},
+        {**CATALOG, 'apiVersion': '2'},
+        {**CATALOG, 'csrfToken': ''},
+        {**CATALOG, 'abilities': [TOOL, TOOL]},
+        {**CATALOG, 'abilities': [{**TOOL, 'readOnly': False}]},
+        {**CATALOG, 'abilities': [{**TOOL, 'name': '../execute'}]},
+    ],
+)
 async def test_malformed_catalog_fails_closed(payload):
     transport = httpx.MockTransport(
         lambda request: httpx.Response(200, json=payload)
     )
-    async with AbilitiesClient(
-        ENDPOINT, TOKEN, transport=transport
-    ) as client:
+    async with AbilitiesClient(ENDPOINT, TOKEN, transport=transport) as client:
         with pytest.raises(AbilitiesError):
             await client.discover()
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize('body, content_type', [
-    (b'<html>Login required</html>', 'text/html'),
-    (b'{invalid', 'application/json'),
-    (b'x' * 1_100_001, 'application/json'),
-])
+@pytest.mark.parametrize(
+    'body, content_type',
+    [
+        (b'<html>Login required</html>', 'text/html'),
+        (b'{invalid', 'application/json'),
+        (b'x' * 1_100_001, 'application/json'),
+    ],
+)
 async def test_invalid_or_oversized_response(body, content_type):
-    transport = httpx.MockTransport(lambda request: httpx.Response(
-        200, content=body, headers={'content-type': content_type},
-    ))
-    async with AbilitiesClient(
-        ENDPOINT, TOKEN, transport=transport
-    ) as client:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            content=body,
+            headers={'content-type': content_type},
+        )
+    )
+    async with AbilitiesClient(ENDPOINT, TOKEN, transport=transport) as client:
         with pytest.raises(AbilitiesError):
             await client.discover()
 
@@ -148,7 +162,8 @@ async def test_compressed_response_rejected_before_decompression():
     def handler(request):
         assert request.headers['accept-encoding'] == 'identity'
         return httpx.Response(
-            200, stream=httpx.ByteStream(gzip.compress(b'x' * 100_000)),
+            200,
+            stream=httpx.ByteStream(gzip.compress(b'x' * 100_000)),
             headers={
                 'content-type': 'application/json',
                 'content-encoding': 'gzip',
@@ -162,14 +177,17 @@ async def test_compressed_response_rejected_before_decompression():
             await client.discover()
 
 
-@pytest.mark.parametrize('endpoint, allow', [
-    ('http://cacti.example/plugins/abilities/api.php', True),
-    ('http://127.0.0.1/plugins/abilities/api.php', False),
-    ('https://u:p@cacti.example/plugins/abilities/api.php', False),
-    (ENDPOINT + '?token=value', False),
-    (ENDPOINT + '#fragment', False),
-    ('https://cacti.example/other.php', False),
-])
+@pytest.mark.parametrize(
+    'endpoint, allow',
+    [
+        ('http://cacti.example/plugins/abilities/api.php', True),
+        ('http://127.0.0.1/plugins/abilities/api.php', False),
+        ('https://u:p@cacti.example/plugins/abilities/api.php', False),
+        (ENDPOINT + '?token=value', False),
+        (ENDPOINT + '#fragment', False),
+        ('https://cacti.example/other.php', False),
+    ],
+)
 def test_unsafe_endpoints_rejected(endpoint, allow):
     with pytest.raises(ValueError):
         AbilitiesClient(endpoint, TOKEN, allow_loopback_http=allow)

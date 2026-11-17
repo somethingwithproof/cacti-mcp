@@ -41,9 +41,9 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 self.respond(200, CATALOG)
 
         def do_POST(self):
-            data = parse_qs(self.rfile.read(
-                int(self.headers['Content-Length'])
-            ).decode())
+            data = parse_qs(
+                self.rfile.read(int(self.headers['Content-Length'])).decode()
+            )
             if (
                 data.get('__csrf_magic') != ['fixture']
                 or self.headers.get('Cookie') != 'Cacti=fixture'
@@ -53,10 +53,13 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 return
             state['calls'] += 1
             request = json.loads(data['request'][0])
-            self.respond(200, {
-                'requestId': 'b' * 32,
-                'result': {'device': {'id': request['arguments']['id']}},
-            })
+            self.respond(
+                200,
+                {
+                    'requestId': 'b' * 32,
+                    'result': {'device': {'id': request['arguments']['id']}},
+                },
+            )
 
     http = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     thread = threading.Thread(target=http.serve_forever, daemon=True)

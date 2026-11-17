@@ -3,7 +3,8 @@
 import asyncio
 import json
 import re
-from typing import Any
+from types import TracebackType
+from typing import Any, Self
 from urllib.parse import urlsplit
 
 import httpx
@@ -50,9 +51,7 @@ class AbilitiesClient:
             or url.fragment
             or not url.path.endswith('/plugins/abilities/api.php')
         ):
-            raise ValueError(
-                'Endpoint must be an HTTPS abilities plugin URL'
-            )
+            raise ValueError('Endpoint must be an HTTPS abilities plugin URL')
         if not re.fullmatch(r'[a-f0-9]{64}', token):
             raise ValueError('Token must contain 64 lowercase hex characters')
         self._endpoint = endpoint
@@ -69,10 +68,15 @@ class AbilitiesClient:
             transport=transport,
         )
 
-    async def __aenter__(self) -> 'AbilitiesClient':
+    async def __aenter__(self) -> Self:
         return self
 
-    async def __aexit__(self, *exc: object) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         await self._http.aclose()
 
     async def _request(
@@ -108,9 +112,7 @@ class AbilitiesClient:
                             )
                     value = json.loads(body)
         except (httpx.HTTPError, TimeoutError):
-            raise AbilitiesError(
-                'Abilities API connection failed'
-            ) from None
+            raise AbilitiesError('Abilities API connection failed') from None
         except (ValueError, RecursionError):
             raise AbilitiesError(
                 'Abilities API returned invalid JSON'

@@ -40,8 +40,10 @@ jobs:
           cache-dependency-glob: uv.lock
       - name: Install locked dependencies
         run: uv sync --locked
-      - name: Lint
-        run: uv run --no-sync ruff check .
+      - name: Lint and format
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
       - name: Test HTTP and MCP transports
         run: uv run --no-sync pytest --junitxml=test-results.xml
       - name: Upload test results

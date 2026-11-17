@@ -66,11 +66,13 @@ def main() -> None:
     )
     parser.add_argument('--version', action='version', version=__version__)
     parser.add_argument(
-        '--endpoint', default=os.environ.get('CACTI_MCP_ENDPOINT'),
+        '--endpoint',
+        default=os.environ.get('CACTI_MCP_ENDPOINT'),
         help='HTTPS URL ending in /plugins/abilities/api.php',
     )
     parser.add_argument(
-        '--allow-loopback-http', action='store_true',
+        '--allow-loopback-http',
+        action='store_true',
         help='Allow HTTP to loopback only, for local testing',
     )
     args = parser.parse_args()
