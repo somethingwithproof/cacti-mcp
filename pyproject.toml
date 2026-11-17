@@ -30,7 +30,7 @@ Repository = 'https://github.com/somethingwithproof/cacti-mcp'
 Issues = 'https://github.com/somethingwithproof/cacti-mcp/issues'
 
 [dependency-groups]
-dev = ['pytest>=9,<10', 'ruff>=0.15,<0.16']
+dev = ['pytest>=9,<10', 'ruff>=0.15,<0.18']
 
 [tool.hatch.build.targets.wheel]
 packages = ['src/cacti_mcp']
