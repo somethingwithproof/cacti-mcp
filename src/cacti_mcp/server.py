@@ -2,11 +2,13 @@
 
 import argparse
 import asyncio
+import json
 import os
 from typing import Any
 
-from mcp import types
-from mcp.server import Server
+import jsonschema
+import mcp_types as types
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
 
 from cacti_mcp import __version__
@@ -14,39 +16,72 @@ from cacti_mcp.client import AbilitiesClient, AbilitiesError
 
 
 def create_server(client: AbilitiesClient) -> Server:
-    server = Server('cacti-mcp', version=__version__)
+    # The 1.x low-level server validated arguments against the schemas from
+    # the last tools/list; 2.x does not, so keep that check here.
+    schemas: dict[str, dict[str, Any]] = {}
 
-    @server.list_tools()
-    async def list_tools() -> list[types.Tool]:
+    async def refresh() -> list[dict[str, Any]]:
         items = await client.discover()
-        return [
-            types.Tool(
-                name=item['name'],
-                description=item['description'],
-                inputSchema=item['inputSchema'],
-                annotations=types.ToolAnnotations(
-                    readOnlyHint=True,
-                    destructiveHint=False,
-                    idempotentHint=True,
-                    openWorldHint=True,
-                ),
-            )
-            for item in items
-        ]
+        schemas.clear()
+        schemas.update({item['name']: item['inputSchema'] for item in items})
+        return items
 
-    @server.call_tool()
-    async def call_tool(
-        name: str, arguments: dict[str, Any]
-    ) -> dict[str, Any] | types.CallToolResult:
+    async def on_list_tools(
+        ctx: ServerRequestContext, params: types.PaginatedRequestParams | None
+    ) -> types.ListToolsResult:
+        return types.ListToolsResult(
+            tools=[
+                types.Tool(
+                    name=item['name'],
+                    description=item['description'],
+                    input_schema=item['inputSchema'],
+                    annotations=types.ToolAnnotations(
+                        read_only_hint=True,
+                        destructive_hint=False,
+                        idempotent_hint=True,
+                        open_world_hint=True,
+                    ),
+                )
+                for item in await refresh()
+            ]
+        )
+
+    async def on_call_tool(
+        ctx: ServerRequestContext, params: types.CallToolRequestParams
+    ) -> types.CallToolResult:
+        arguments = params.arguments or {}
         try:
-            return await client.execute(name, arguments)
+            if params.name not in schemas:
+                await refresh()
+            schema = schemas.get(params.name)
+            if schema is not None:
+                try:
+                    jsonschema.validate(arguments, schema)
+                except jsonschema.ValidationError as error:
+                    raise AbilitiesError(
+                        f'Input validation error: {error.message}'
+                    ) from None
+            result = await client.execute(params.name, arguments)
         except AbilitiesError as error:
             return types.CallToolResult(
-                isError=True,
+                is_error=True,
                 content=[types.TextContent(type='text', text=str(error))],
             )
+        return types.CallToolResult(
+            content=[
+                types.TextContent(
+                    type='text', text=json.dumps(result, indent=2)
+                )
+            ],
+            structured_content=result,
+        )
 
-    return server
+    return Server(
+        'cacti-mcp',
+        version=__version__,
+        on_list_tools=on_list_tools,
+        on_call_tool=on_call_tool,
+    )
 
 
 async def serve(endpoint: str, token: str, allow_http: bool) -> None:

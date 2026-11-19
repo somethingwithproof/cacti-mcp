@@ -82,19 +82,19 @@ async def test_sdk_discovery_execution_validation_and_revocation():
         async with stdio_client(params) as (reader, writer):
             async with ClientSession(reader, writer) as session:
                 init = await session.initialize()
-                assert init.serverInfo.name == 'cacti-mcp'
+                assert init.server_info.name == 'cacti-mcp'
                 tools = await session.list_tools()
                 assert [tool.name for tool in tools.tools] == [TOOL['name']]
-                assert tools.tools[0].annotations.readOnlyHint is True
+                assert tools.tools[0].annotations.read_only_hint is True
                 result = await session.call_tool(TOOL['name'], {'id': 7})
-                assert not result.isError
-                assert result.structuredContent['result']['device']['id'] == 7
+                assert not result.is_error
+                assert result.structured_content['result']['device']['id'] == 7
                 invalid = await session.call_tool(TOOL['name'], {'id': '7'})
-                assert invalid.isError
+                assert invalid.is_error
                 assert state['calls'] == 1
                 state['revoked'] = True
                 denied = await session.call_tool(TOOL['name'], {'id': 7})
-                assert denied.isError
+                assert denied.is_error
                 assert state['calls'] == 1
                 assert TOKEN not in denied.model_dump_json()
     finally:
