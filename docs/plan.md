@@ -2,7 +2,7 @@
 
 The first release consists of two independently installable repositories:
 
-1. `plugin_abilities`: Cacti PHP lifecycle, token management, ability
+1. `plugin_mcp`: Cacti PHP lifecycle, token management, ability
    registry, permission checks, API v1, inventory providers, and execution audit.
 2. `cacti-mcp`: Python MCP transport and HTTP adapter. Build with uv/Hatchling;
    launch through the `cacti-mcp` entry point. No PHP files ship in its wheel.
