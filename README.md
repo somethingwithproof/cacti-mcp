@@ -18,7 +18,8 @@ Cacti MCP is a Python adapter that exposes the abilities of the
 tools over stdio. The plugin already serves MCP over HTTP directly, so use
 that when your client can connect to a remote server. This adapter is for
 clients that only speak stdio. It uses the official Python MCP SDK and
-translates tool calls into the plugin's HTTPS API (v2, bearer token only).
+translates tool calls into the plugin's HTTPS API (abilities contract v2, served
+under `/v1/` paths, bearer token only).
 Cacti owns authentication, authorization, validation, and execution.
 
 **Status: in development, before 1.0.** Version 0.1.0 supports read-only device
@@ -51,7 +52,8 @@ Connect an MCP client to list the Cacti devices its dedicated user may see,
 look up one permitted device, or retrieve installation versions when the user
 has the required administrative realm. Names and input schemas come from
 the plugin's discovery response, so the adapter does not duplicate each provider.
-See the [plugin's use cases](https://github.com/somethingwithproof/plugin_mcp#use-cases)
+See the plugin's
+[ability registration rules](https://github.com/somethingwithproof/plugin_mcp#write-an-ability-plugin-authors)
 for the registration model and current limits.
 
 ## Code and test map
@@ -72,18 +74,24 @@ endpoint. It does not require or replace a live Cacti integration check.
 - Exposes only abilities whose annotations are exactly read-only, non-destructive, and idempotent. Schemas and names come
   from Cacti; the adapter contains no SQL, device credentials, or repair commands.
 - Sends only the bearer token: no cookies, no CSRF step. The plugin rechecks
-  token validity and permissions on every POST.
+  token validity and permissions on every request.
 - Uses verified HTTPS, never stores cookies, refuses redirects, and
   ignores proxy environment variables. HTTP requires `--allow-loopback-http`
   and a literal loopback address or `localhost`.
-- Bounds API calls to 35 seconds overall, 30 seconds of network inactivity, and
-  approximately 1 MB per response. Calls are serialized per client session.
+- Bounds API calls to 35 seconds overall, 5 seconds to connect, 30 seconds of
+  network inactivity, and approximately 1 MB per response (1,100,000 bytes).
+  Request bodies are limited to 16,384 bytes. Calls are serialized per client
+  session.
+- Checks tool arguments against the input schema from the last discovery before
+  sending them, and executes only ids from that verified catalog. A mismatch, or
+  a malformed schema from the server, comes back as a tool error, not a crash.
 - Does not retry execution automatically. Tool errors carry only the HTTP
   status, the AIP-193 `status`, and the ErrorInfo `reason`; never server
   message text, response bodies, or credentials. Stdout is reserved for MCP messages.
 
-The SDK version is pinned by `uv.lock`. This adapter uses its v1 tools/stdio
-interface; it does not implement a remote MCP HTTP endpoint, OAuth, resources,
+The SDK version is pinned by `uv.lock` (`mcp>=2.3,<3` in `pyproject.toml`). This
+adapter uses its 2.x low-level server with the stdio transport; it does not
+implement a remote MCP HTTP endpoint, OAuth, resources,
 prompts, subscriptions, or background tasks.
 
 See [the API contract](docs/api.md) and [implementation plan](docs/plan.md).
@@ -100,16 +108,24 @@ uv run --locked cacti-mcp --help
 
 Install and enable the PHP plugin, grant its realm to a dedicated Cacti user,
 and create a personal access token for that user (format `cmcp_pat_` followed
-by 64 lowercase hex digits) in the plugin's console.
+by 64 lowercase hex digits) in the plugin's console, on its My MCP Tokens page,
+or with its `tokens.php` command.
 The user's existing Cacti realms and device permissions still apply.
 
 Provide the token through your secret manager as `CACTI_MCP_TOKEN`; never add it
-to source control or command arguments. Set the endpoint separately:
+to source control or command arguments. Set the endpoint separately. It must be an
+HTTPS URL that ends in `/plugins/mcp/api.php`, with no credentials, query, or
+fragment:
 
 ```console
 export CACTI_MCP_ENDPOINT=https://cacti.example.com/cacti/plugins/mcp/api.php
 uv run --locked cacti-mcp
 ```
+
+`--endpoint URL` sets the endpoint instead of `CACTI_MCP_ENDPOINT`.
+`--allow-loopback-http` permits plain HTTP to `localhost`, `127.0.0.1`, or `::1`
+for local testing, and `--version` prints the version. Without both the endpoint
+and `CACTI_MCP_TOKEN`, the command exits with a usage error.
 
 The process waits for MCP messages on stdin. An MCP client normally launches it.
 For clients accepting the common `mcpServers` configuration format:
