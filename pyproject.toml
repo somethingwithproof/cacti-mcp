@@ -5,7 +5,7 @@ build-backend = 'hatchling.build'
 [project]
 name = 'cacti-mcp'
 version = '0.1.0'
-description = 'MCP adapter for the Cacti Abilities plugin'
+description = 'MCP adapter for the Cacti MCP plugin'
 readme = 'README.md'
 requires-python = '>=3.12'
 license = 'GPL-2.0-or-later'

@@ -6,12 +6,11 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
 
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from test_client import CATALOG, TOKEN, TOOL
+from test_client import CATALOG, TOKEN, TOOL, TOOL_ID
 
 
 @pytest.mark.anyio
@@ -27,7 +26,6 @@ async def test_sdk_discovery_execution_validation_and_revocation():
             self.send_response(status)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
-            self.send_header('Set-Cookie', 'Cacti=fixture; Path=/')
             self.end_headers()
             self.wfile.write(body)
 
@@ -36,28 +34,36 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 state['revoked']
                 or self.headers.get('Authorization') != f'Bearer {TOKEN}'
             ):
-                self.respond(401, {'error': {'code': 'invalid_token'}})
+                self.respond(401, {'error': {'code': 401}})
+            elif (
+                self.path.split('?')[0] != '/plugins/mcp/api.php/v1/abilities'
+            ):
+                self.respond(404, {})
             else:
                 self.respond(200, CATALOG)
 
         def do_POST(self):
-            data = parse_qs(
-                self.rfile.read(int(self.headers['Content-Length'])).decode()
+            body = json.loads(
+                self.rfile.read(int(self.headers['Content-Length']))
             )
             if (
-                data.get('__csrf_magic') != ['fixture']
-                or self.headers.get('Cookie') != 'Cacti=fixture'
+                state['revoked']
                 or self.headers.get('Authorization') != f'Bearer {TOKEN}'
             ):
-                self.respond(403, {})
+                self.respond(401, {'error': {'code': 401}})
+                return
+            if (
+                self.path
+                != f'/plugins/mcp/api.php/v1/abilities/{TOOL_ID}:execute'
+            ):
+                self.respond(404, {})
                 return
             state['calls'] += 1
-            request = json.loads(data['request'][0])
             self.respond(
                 200,
                 {
                     'requestId': 'b' * 32,
-                    'result': {'device': {'id': request['arguments']['id']}},
+                    'result': {'id': body['arguments']['id']},
                 },
             )
 
@@ -72,8 +78,7 @@ async def test_sdk_discovery_execution_validation_and_revocation():
             **os.environ,
             'PYTHONPATH': source,
             'CACTI_MCP_ENDPOINT': (
-                f'http://127.0.0.1:{http.server_port}'
-                '/plugins/abilities/api.php'
+                f'http://127.0.0.1:{http.server_port}/plugins/mcp/api.php'
             ),
             'CACTI_MCP_TOKEN': TOKEN,
         },
@@ -84,16 +89,21 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 init = await session.initialize()
                 assert init.server_info.name == 'cacti-mcp'
                 tools = await session.list_tools()
-                assert [tool.name for tool in tools.tools] == [TOOL['name']]
-                assert tools.tools[0].annotations.read_only_hint is True
-                result = await session.call_tool(TOOL['name'], {'id': 7})
+                assert [tool.name for tool in tools.tools] == [TOOL_ID]
+                tool = tools.tools[0]
+                assert tool.title == TOOL['displayName']
+                assert tool.output_schema == TOOL['outputSchema']
+                assert tool.annotations.read_only_hint is True
+                assert tool.annotations.destructive_hint is False
+                assert tool.annotations.idempotent_hint is True
+                result = await session.call_tool(TOOL_ID, {'id': 7})
                 assert not result.is_error
-                assert result.structured_content['result']['device']['id'] == 7
-                invalid = await session.call_tool(TOOL['name'], {'id': '7'})
+                assert result.structured_content == {'id': 7}
+                invalid = await session.call_tool(TOOL_ID, {'id': '7'})
                 assert invalid.is_error
                 assert state['calls'] == 1
                 state['revoked'] = True
-                denied = await session.call_tool(TOOL['name'], {'id': 7})
+                denied = await session.call_tool(TOOL_ID, {'id': 7})
                 assert denied.is_error
                 assert state['calls'] == 1
                 assert TOKEN not in denied.model_dump_json()

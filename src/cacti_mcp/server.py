@@ -12,7 +12,7 @@ from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
 
 from cacti_mcp import __version__
-from cacti_mcp.client import AbilitiesClient, AbilitiesError
+from cacti_mcp.client import AbilitiesClient, AbilitiesError, ability_id
 
 
 def create_server(client: AbilitiesClient) -> Server:
@@ -23,7 +23,9 @@ def create_server(client: AbilitiesClient) -> Server:
     async def refresh() -> list[dict[str, Any]]:
         items = await client.discover()
         schemas.clear()
-        schemas.update({item['name']: item['inputSchema'] for item in items})
+        schemas.update(
+            {ability_id(item['name']): item['inputSchema'] for item in items}
+        )
         return items
 
     async def on_list_tools(
@@ -32,9 +34,11 @@ def create_server(client: AbilitiesClient) -> Server:
         return types.ListToolsResult(
             tools=[
                 types.Tool(
-                    name=item['name'],
+                    name=ability_id(item['name']),
+                    title=item['displayName'],
                     description=item['description'],
                     input_schema=item['inputSchema'],
+                    output_schema=item['outputSchema'],
                     annotations=types.ToolAnnotations(
                         read_only_hint=True,
                         destructive_hint=False,
@@ -97,13 +101,13 @@ async def serve(endpoint: str, token: str, allow_http: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description='Serve Cacti abilities as MCP tools over stdio.'
+        description='Serve Cacti MCP plugin abilities as MCP tools over stdio.'
     )
     parser.add_argument('--version', action='version', version=__version__)
     parser.add_argument(
         '--endpoint',
         default=os.environ.get('CACTI_MCP_ENDPOINT'),
-        help='HTTPS URL ending in /plugins/abilities/api.php',
+        help='HTTPS URL ending in /plugins/mcp/api.php',
     )
     parser.add_argument(
         '--allow-loopback-http',

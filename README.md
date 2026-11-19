@@ -10,33 +10,36 @@
 	<a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-blue" alt="License: GPL-2.0-or-later"></a>
 	<img src="https://img.shields.io/badge/Python-3.12%2B-3776ab?logo=python&amp;logoColor=white" alt="Python 3.12+">
 	<img src="https://img.shields.io/badge/MCP-stdio-2e7d32" alt="MCP over stdio">
-	<img src="https://img.shields.io/badge/Abilities_API-v1-2e7d32" alt="Abilities API v1">
+	<img src="https://img.shields.io/badge/MCP_plugin_API-v2-2e7d32" alt="MCP plugin API v2">
 </p>
 
-Cacti MCP is a Python adapter that exposes Cacti Abilities as MCP tools over
-stdio. It uses the official Python MCP SDK and translates tool calls into the
-plugin's HTTPS API. Cacti owns authentication, authorization, validation, and
-execution.
+Cacti MCP is a Python adapter that exposes the abilities of the
+[Cacti MCP plugin](https://github.com/somethingwithproof/plugin_mcp) as MCP
+tools over stdio. The plugin already serves MCP over HTTP directly, so use
+that when your client can connect to a remote server. This adapter is for
+clients that only speak stdio. It uses the official Python MCP SDK and
+translates tool calls into the plugin's HTTPS API (v2, bearer token only).
+Cacti owns authentication, authorization, validation, and execution.
 
 **Status: in development, before 1.0.** Version 0.1.0 supports read-only device
 inventory and installation versions through the companion
-[Abilities plugin](https://github.com/somethingwithproof/plugin_abilities).
+[Cacti MCP plugin](https://github.com/somethingwithproof/plugin_mcp).
 There is no tagged release yet. Doctor diagnostics and repairs are future work.
 
 ## What it exposes
 
-| Operation | MCP tool supplied by Cacti Abilities |
+| Operation | MCP tool supplied by the Cacti MCP plugin |
 |---|---|
-| List the devices the token owner may see | `cacti.devices.list` |
-| Read one permitted device | `cacti.devices.get` |
-| Read Cacti, plugin, and API versions | `cacti.system.info` |
+| List the devices the token owner may see | `cacti-list-devices` |
+| Read one permitted device | `cacti-get-device` |
+| Read Cacti, plugin, and API versions | `cacti-get-system-info` |
 
 Names, descriptions, and input schemas come from Cacti's permission-filtered
 discovery response. Additional permitted read-only providers can be discovered
 without adding Python tool handlers.
 
 ```text
-MCP client --stdio--> cacti-mcp --HTTPS--> Cacti Abilities plugin
+MCP client --stdio--> cacti-mcp --HTTPS--> Cacti MCP plugin
                                            |-- Cacti permissions
                                            |-- ability providers
                                            `-- execution audit
@@ -47,15 +50,15 @@ MCP client --stdio--> cacti-mcp --HTTPS--> Cacti Abilities plugin
 Connect an MCP client to list the Cacti devices its dedicated user may see,
 look up one permitted device, or retrieve installation versions when the user
 has the required administrative realm. Names and input schemas come from
-Cacti Abilities discovery, so the adapter does not duplicate each provider.
-See the [plugin's use cases and WordPress Abilities API comparison](https://github.com/somethingwithproof/plugin_abilities#use-cases)
+the plugin's discovery response, so the adapter does not duplicate each provider.
+See the [plugin's use cases](https://github.com/somethingwithproof/plugin_mcp#use-cases)
 for the registration model and current limits.
 
 ## Code and test map
 
 | Behavior | Implementation | Test evidence in this repository |
 |---|---|---|
-| HTTPS validation, bounds, cookies, and CSRF | [client.py](src/cacti_mcp/client.py) | [test_client.py](tests/test_client.py) |
+| HTTPS validation, bounds, bearer-only auth, and v2 paging | [client.py](src/cacti_mcp/client.py) | [test_client.py](tests/test_client.py) |
 | MCP discovery, calls, and permission changes | [server.py](src/cacti_mcp/server.py) | [test_stdio.py](tests/test_stdio.py) |
 | Command-line help, version, and missing configuration | [server.py](src/cacti_mcp/server.py), [__main__.py](src/cacti_mcp/__main__.py) | [test_cli.py](tests/test_cli.py) |
 
@@ -66,17 +69,18 @@ endpoint. It does not require or replace a live Cacti integration check.
 
 - Uses the official [`mcp` Python SDK](https://github.com/modelcontextprotocol/python-sdk)
   for initialization, tool discovery, calls, and stdio framing.
-- Exposes only abilities marked read-only by API v1. Schemas and names come
+- Exposes only abilities whose annotations are exactly read-only, non-destructive, and idempotent. Schemas and names come
   from Cacti; the adapter contains no SQL, device credentials, or repair commands.
-- Refreshes discovery and the Cacti CSRF token before every execution. The PHP
-  endpoint rechecks bearer-token validity and permissions on the POST.
-- Keeps session cookies in memory. Uses verified HTTPS, refuses redirects, and
+- Sends only the bearer token: no cookies, no CSRF step. The plugin rechecks
+  token validity and permissions on every POST.
+- Uses verified HTTPS, never stores cookies, refuses redirects, and
   ignores proxy environment variables. HTTP requires `--allow-loopback-http`
   and a literal loopback address or `localhost`.
 - Bounds API calls to 35 seconds overall, 30 seconds of network inactivity, and
   approximately 1 MB per response. Calls are serialized per client session.
-- Does not retry execution automatically. HTTP error bodies and credentials
-  are excluded from tool errors. Stdout is reserved for MCP messages.
+- Does not retry execution automatically. Tool errors carry only the HTTP
+  status, the AIP-193 `status`, and the ErrorInfo `reason`; never server
+  message text, response bodies, or credentials. Stdout is reserved for MCP messages.
 
 The SDK version is pinned by `uv.lock`. This adapter uses its v1 tools/stdio
 interface; it does not implement a remote MCP HTTP endpoint, OAuth, resources,
@@ -94,15 +98,16 @@ uv sync --locked
 uv run --locked cacti-mcp --help
 ```
 
-Install and enable the PHP plugin, grant its **Abilities API** realm to a
-dedicated Cacti user, and provision a scoped token using the plugin's CLI.
+Install and enable the PHP plugin, grant its realm to a dedicated Cacti user,
+and create a personal access token for that user (format `cmcp_pat_` followed
+by 64 lowercase hex digits) in the plugin's console.
 The user's existing Cacti realms and device permissions still apply.
 
 Provide the token through your secret manager as `CACTI_MCP_TOKEN`; never add it
 to source control or command arguments. Set the endpoint separately:
 
 ```console
-export CACTI_MCP_ENDPOINT=https://cacti.example/cacti/plugins/abilities/api.php
+export CACTI_MCP_ENDPOINT=https://cacti.example.com/cacti/plugins/mcp/api.php
 uv run --locked cacti-mcp
 ```
 
@@ -148,8 +153,8 @@ uv run --locked pytest
 uv build
 ```
 
-Tests cover HTTP validation, credential isolation, session/CSRF handling,
-permission changes, and an actual SDK client/server subprocess exchange against
+Tests cover HTTP validation, credential isolation, bearer-only requests,
+paging, error redaction, and an actual SDK client/server subprocess exchange against
 a fixture HTTP server. They do not require a live Cacti installation.
 
 The repository uses `src/cacti_mcp/`, pytest, Ruff, uv, and Hatchling. CI tests
@@ -163,7 +168,7 @@ Pull requests go to `develop`. Keep the adapter compatible with Python 3.12,
 follow the existing Ruff configuration and `src/cacti_mcp/` package layout, and
 keep stdout reserved for MCP messages. Add tests for changed transport or tool
 behavior, run the checks above, and sign off commits with `git commit -s`.
-Coordinate API changes with the Abilities plugin and update [docs/api.md](docs/api.md).
+Coordinate API changes with the Cacti MCP plugin and update [docs/api.md](docs/api.md).
 
 ## License
 

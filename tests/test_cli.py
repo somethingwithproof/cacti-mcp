@@ -27,10 +27,12 @@ def test_informational_options_do_not_require_credentials(option):
     assert result.stderr == ''
     expected = __version__ if option == '--version' else 'usage:'
     assert expected in result.stdout
+    if option == '--help':
+        assert '/plugins/mcp/api.php' in result.stdout
 
 
 def test_missing_endpoint_reports_usage_without_disclosing_token():
-    token = 'a' * 64
+    token = 'cmcp_pat_' + 'a' * 64
     env = {**os.environ, 'CACTI_MCP_TOKEN': token}
     env.pop('CACTI_MCP_ENDPOINT', None)
     result = subprocess.run(
