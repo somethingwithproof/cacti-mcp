@@ -43,7 +43,7 @@ def create_server(client: AbilitiesClient) -> Server:
                         read_only_hint=True,
                         destructive_hint=False,
                         idempotent_hint=True,
-                        open_world_hint=True,
+                        open_world_hint=False,
                     ),
                 )
                 for item in await refresh()
@@ -67,6 +67,9 @@ def create_server(client: AbilitiesClient) -> Server:
                 raise AbilitiesError(
                     f'Input validation error: {error.message}'
                 ) from None
+            except jsonschema.SchemaError:
+                # A malformed server schema is a tool error, not a crash.
+                raise AbilitiesError('Invalid tool schema.') from None
             result = await client.execute(params.name, arguments)
         except AbilitiesError as error:
             return types.CallToolResult(

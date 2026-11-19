@@ -15,7 +15,13 @@ from test_client import CATALOG, TOKEN, TOOL, TOOL_ID
 
 @pytest.mark.anyio
 async def test_sdk_discovery_execution_validation_and_revocation():
-    state = {'revoked': False, 'calls': 0, 'extra': False, 'paths': []}
+    state = {
+        'revoked': False,
+        'calls': 0,
+        'extra': False,
+        'bad_schema': False,
+        'paths': [],
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -43,6 +49,17 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 items = [TOOL]
                 if state['extra']:
                     items.append({**TOOL, 'name': 'abilities/cacti-new-thing'})
+                if state['bad_schema']:
+                    items.append(
+                        {
+                            **TOOL,
+                            'name': 'abilities/cacti-bad-schema',
+                            'inputSchema': {
+                                'type': 'object',
+                                'properties': {'id': {'type': 'bogus'}},
+                            },
+                        }
+                    )
                 self.respond(200, {**CATALOG, 'abilities': items})
 
         def do_POST(self):
@@ -100,6 +117,7 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 assert tool.annotations.read_only_hint is True
                 assert tool.annotations.destructive_hint is False
                 assert tool.annotations.idempotent_hint is True
+                assert tool.annotations.open_world_hint is False
                 result = await session.call_tool(TOOL_ID, {'id': 7})
                 assert not result.is_error
                 assert result.structured_content == {'id': 7}
@@ -116,6 +134,12 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 # Found after one refresh, so it reaches the (404) server.
                 assert len(state['paths']) == before + 1
                 assert found.is_error
+                state['bad_schema'] = True
+                await session.list_tools()
+                malformed = await session.call_tool('cacti-bad-schema', {})
+                assert malformed.is_error
+                assert 'Invalid tool schema.' in malformed.model_dump_json()
+                assert len(state['paths']) == before + 1
                 state['revoked'] = True
                 denied = await session.call_tool(TOOL_ID, {'id': 7})
                 assert denied.is_error
