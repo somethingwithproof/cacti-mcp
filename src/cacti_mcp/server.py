@@ -57,14 +57,16 @@ def create_server(client: AbilitiesClient) -> Server:
         try:
             if params.name not in schemas:
                 await refresh()
+            # Only ids from the last verified catalog may be executed.
             schema = schemas.get(params.name)
-            if schema is not None:
-                try:
-                    jsonschema.validate(arguments, schema)
-                except jsonschema.ValidationError as error:
-                    raise AbilitiesError(
-                        f'Input validation error: {error.message}'
-                    ) from None
+            if schema is None:
+                raise AbilitiesError('Unknown tool.')
+            try:
+                jsonschema.validate(arguments, schema)
+            except jsonschema.ValidationError as error:
+                raise AbilitiesError(
+                    f'Input validation error: {error.message}'
+                ) from None
             result = await client.execute(params.name, arguments)
         except AbilitiesError as error:
             return types.CallToolResult(

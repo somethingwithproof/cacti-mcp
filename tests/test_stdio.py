@@ -15,7 +15,7 @@ from test_client import CATALOG, TOKEN, TOOL, TOOL_ID
 
 @pytest.mark.anyio
 async def test_sdk_discovery_execution_validation_and_revocation():
-    state = {'revoked': False, 'calls': 0}
+    state = {'revoked': False, 'calls': 0, 'extra': False, 'paths': []}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -40,7 +40,10 @@ async def test_sdk_discovery_execution_validation_and_revocation():
             ):
                 self.respond(404, {})
             else:
-                self.respond(200, CATALOG)
+                items = [TOOL]
+                if state['extra']:
+                    items.append({**TOOL, 'name': 'abilities/cacti-new-thing'})
+                self.respond(200, {**CATALOG, 'abilities': items})
 
         def do_POST(self):
             body = json.loads(
@@ -52,6 +55,7 @@ async def test_sdk_discovery_execution_validation_and_revocation():
             ):
                 self.respond(401, {'error': {'code': 401}})
                 return
+            state['paths'].append(self.path)
             if (
                 self.path
                 != f'/plugins/mcp/api.php/v1/abilities/{TOOL_ID}:execute'
@@ -102,6 +106,16 @@ async def test_sdk_discovery_execution_validation_and_revocation():
                 invalid = await session.call_tool(TOOL_ID, {'id': '7'})
                 assert invalid.is_error
                 assert state['calls'] == 1
+                before = len(state['paths'])
+                unknown = await session.call_tool('cacti-new-thing', {'id': 1})
+                assert unknown.is_error
+                assert 'Unknown tool.' in unknown.model_dump_json()
+                assert len(state['paths']) == before
+                state['extra'] = True
+                found = await session.call_tool('cacti-new-thing', {'id': 1})
+                # Found after one refresh, so it reaches the (404) server.
+                assert len(state['paths']) == before + 1
+                assert found.is_error
                 state['revoked'] = True
                 denied = await session.call_tool(TOOL_ID, {'id': 7})
                 assert denied.is_error

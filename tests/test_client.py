@@ -88,6 +88,7 @@ async def test_bearer_only_no_cookies():
         assert await client.discover() == [TOOL]
         assert await client.execute(TOOL_ID, {'id': 7}) == {'id': 7}
         await client.execute(TOOL_ID, {'id': 7})
+        assert len(client._http.cookies.jar) == 0
     assert [r.method for r in requests] == ['GET', 'POST', 'POST']
 
 
@@ -236,6 +237,8 @@ async def test_http_errors_do_not_follow_redirects_or_expose_bodies(status):
         {},
         {**CATALOG, 'abilities': 'x'},
         {**CATALOG, 'nextPageToken': 5},
+        {**CATALOG, 'nextPageToken': 0},
+        {**CATALOG, 'nextPageToken': False},
         {**CATALOG, 'abilities': [TOOL, TOOL]},
         {**CATALOG, 'abilities': [{**TOOL, 'name': '../execute'}]},
         {**CATALOG, 'abilities': [{**TOOL, 'name': 'cacti.devices.get'}]},
@@ -359,3 +362,21 @@ async def test_oversized_arguments_never_send_a_request():
 def test_malformed_token_rejected(token):
     with pytest.raises(ValueError):
         AbilitiesClient(ENDPOINT, token)
+
+
+@pytest.mark.anyio
+async def test_compressed_error_still_reports_status():
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            503,
+            stream=httpx.ByteStream(gzip.compress(b'x' * 1000)),
+            headers={
+                'content-type': 'application/json',
+                'content-encoding': 'gzip',
+            },
+        )
+    )
+    async with AbilitiesClient(ENDPOINT, TOKEN, transport=transport) as client:
+        with pytest.raises(AbilitiesError) as error:
+            await client.discover()
+    assert str(error.value) == 'Abilities API returned HTTP 503'

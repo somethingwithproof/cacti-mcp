@@ -144,17 +144,24 @@ class AbilitiesClient:
                     params=params,
                     json=payload,
                 ) as response:
+                    ok = response.status_code == 200
                     encoding = response.headers.get('content-encoding', '')
-                    if encoding not in {'', 'identity'}:
+                    if ok and encoding not in {'', 'identity'}:
                         raise AbilitiesError(
                             'Abilities API must return uncompressed JSON'
                         )
-                    ok = response.status_code == 200
                     media = response.headers.get('content-type', '')
                     is_json = media.split(';')[0].strip() == 'application/json'
                     if ok and not is_json:
                         raise AbilitiesError(
                             'Abilities API did not return JSON'
+                        )
+                    compressed = encoding not in {'', 'identity'}
+                    if compressed:
+                        # Never decompress: report only the status.
+                        raise AbilitiesError(
+                            'Abilities API returned HTTP '
+                            f'{response.status_code}'
                         )
                     body = bytearray()
                     async for chunk in response.aiter_bytes():
@@ -214,7 +221,9 @@ class AbilitiesClient:
                     params['pageToken'] = token
                 page = await self._request('GET', '/v1/abilities', params)
                 items = page.get('abilities')
-                token = page.get('nextPageToken') or ''
+                token = page.get('nextPageToken')
+                if token is None:
+                    token = ''
                 if not isinstance(items, list) or not isinstance(token, str):
                     raise AbilitiesError('Unsupported abilities API response')
                 for item in items:
