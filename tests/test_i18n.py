@@ -98,6 +98,11 @@ def test_default_english_and_fallback():
 
 
 def test_cli_lang_flag_localizes_help():
+    assert normalize_locale('zh-TW-u-nu-hanidec') == 'zh-TW'
+    assert normalize_locale('zh-HK-x-private') == 'zh-TW'
+    assert normalize_locale('zh-Hans-TW') == 'zh-CN'
+    assert normalize_locale('x-private') == 'en'
+
     env = {
         k: v
         for k, v in os.environ.items()
@@ -105,6 +110,22 @@ def test_cli_lang_flag_localizes_help():
     }
     de = subprocess.run(
         [sys.executable, '-m', 'cacti_mcp', '--lang', 'de', '--help'],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    repeated = subprocess.run(
+        [
+            sys.executable,
+            '-m',
+            'cacti_mcp',
+            '--lang',
+            'tr',
+            '--lang',
+            'uk',
+            '--help',
+        ],
         env=env,
         capture_output=True,
         text=True,
@@ -118,6 +139,14 @@ def test_cli_lang_flag_localizes_help():
         timeout=10,
     )
     assert de.returncode == 0
+    assert repeated.returncode == 0
     assert en.returncode == 0
-    assert t('cli.description', locale='de') in de.stdout
-    assert t('cli.description', locale='en') in en.stdout
+    assert ' '.join(t('cli.description', locale='de').split()) in ' '.join(
+        de.stdout.split()
+    )
+    assert ' '.join(t('cli.description', locale='uk').split()) in ' '.join(
+        repeated.stdout.split()
+    )
+    assert ' '.join(t('cli.description', locale='en').split()) in ' '.join(
+        en.stdout.split()
+    )

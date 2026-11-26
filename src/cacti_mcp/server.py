@@ -106,12 +106,20 @@ async def serve(endpoint: str, token: str, allow_http: bool) -> None:
 
 
 def _extract_lang(argv: list[str]) -> str | None:
-    for idx, arg in enumerate(argv):
+    found: str | None = None
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg == '--':
+            break
         if arg == '--lang' and idx + 1 < len(argv):
-            return argv[idx + 1]
+            found = argv[idx + 1]
+            idx += 2
+            continue
         if arg.startswith('--lang='):
-            return arg.split('=', 1)[1]
-    return None
+            found = arg.split('=', 1)[1]
+        idx += 1
+    return found
 
 
 def main(argv: list[str] | None = None) -> None:
