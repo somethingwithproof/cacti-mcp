@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from cacti_mcp.i18n import t
+
 MAX_RESPONSE_BYTES = 1_100_000
 MAX_REQUEST_BYTES = 16_384
 MAX_ABILITIES = 256
@@ -79,7 +81,7 @@ class AbilitiesClient:
             url = urlsplit(endpoint)
             valid_port = url.port is None or 0 < url.port < 65536
         except ValueError:
-            raise ValueError('Invalid abilities endpoint') from None
+            raise ValueError(t('error.invalid_endpoint')) from None
         loopback = url.hostname in {'localhost', '127.0.0.1', '::1'}
         secure = url.scheme == 'https' or (
             url.scheme == 'http' and allow_loopback_http and loopback
@@ -94,11 +96,9 @@ class AbilitiesClient:
             or url.fragment
             or not url.path.endswith(ENDPOINT_SUFFIX)
         ):
-            raise ValueError('Endpoint must be an HTTPS Cacti MCP plugin URL')
+            raise ValueError(t('error.endpoint_must_be_https'))
         if not TOKEN_PATTERN.fullmatch(token):
-            raise ValueError(
-                'Token must look like cmcp_pat_ plus 64 hex digits'
-            )
+            raise ValueError(t('error.invalid_token'))
         self._endpoint = endpoint.rstrip('/')
         self._lock = asyncio.Lock()
         self._http = httpx.AsyncClient(
@@ -148,27 +148,28 @@ class AbilitiesClient:
                     encoding = response.headers.get('content-encoding', '')
                     if ok and encoding not in {'', 'identity'}:
                         raise AbilitiesError(
-                            'Abilities API must return uncompressed JSON'
+                            t('error.uncompressed_json_required')
                         )
                     media = response.headers.get('content-type', '')
                     is_json = media.split(';')[0].strip() == 'application/json'
                     if ok and not is_json:
-                        raise AbilitiesError(
-                            'Abilities API did not return JSON'
-                        )
+                        raise AbilitiesError(t('error.non_json_response'))
                     compressed = encoding not in {'', 'identity'}
                     if compressed:
                         # Never decompress: report only the status.
                         raise AbilitiesError(
-                            'Abilities API returned HTTP '
-                            f'{response.status_code}'
+                            t(
+                                'error.http_status',
+                                status=response.status_code,
+                                detail='',
+                            )
                         )
                     body = bytearray()
                     async for chunk in response.aiter_bytes():
                         body.extend(chunk)
                         if len(body) > MAX_RESPONSE_BYTES:
                             raise AbilitiesError(
-                                'Abilities API response exceeded limit'
+                                t('error.response_exceeded_limit')
                             )
                     if not ok:
                         detail = ''
@@ -178,18 +179,19 @@ class AbilitiesClient:
                             except (ValueError, RecursionError):
                                 pass
                         raise AbilitiesError(
-                            'Abilities API returned HTTP '
-                            f'{response.status_code}{detail}'
+                            t(
+                                'error.http_status',
+                                status=response.status_code,
+                                detail=detail,
+                            )
                         )
                     value = json.loads(body)
         except (httpx.HTTPError, TimeoutError):
-            raise AbilitiesError('Abilities API connection failed') from None
+            raise AbilitiesError(t('error.connection_failed')) from None
         except (ValueError, RecursionError):
-            raise AbilitiesError(
-                'Abilities API returned invalid JSON'
-            ) from None
+            raise AbilitiesError(t('error.invalid_json')) from None
         if not isinstance(value, dict):
-            raise AbilitiesError('Abilities API returned invalid data')
+            raise AbilitiesError(t('error.invalid_data'))
         return value
 
     @staticmethod
@@ -207,7 +209,7 @@ class AbilitiesClient:
             or not isinstance(item.get('outputSchema'), dict)
             or item.get('annotations') != ANNOTATIONS
         ):
-            raise AbilitiesError('Invalid ability descriptor')
+            raise AbilitiesError(t('error.invalid_descriptor'))
 
     async def discover(self) -> list[dict[str, Any]]:
         async with self._lock:
@@ -225,11 +227,11 @@ class AbilitiesClient:
                 if token is None:
                     token = ''
                 if not isinstance(items, list) or not isinstance(token, str):
-                    raise AbilitiesError('Unsupported abilities API response')
+                    raise AbilitiesError(t('error.unsupported_response'))
                 for item in items:
                     self._check_descriptor(item)
                     if item['name'] in names:
-                        raise AbilitiesError('Invalid ability descriptor')
+                        raise AbilitiesError(t('error.invalid_descriptor'))
                     names.add(item['name'])
                     abilities.append(item)
                 if len(abilities) >= MAX_ABILITIES:
@@ -237,23 +239,23 @@ class AbilitiesClient:
                 if not token:
                     return abilities
                 if token in tokens:
-                    raise AbilitiesError('Abilities API repeated a page token')
+                    raise AbilitiesError(t('error.repeated_page_token'))
                 tokens.add(token)
-            raise AbilitiesError('Abilities API returned too many pages')
+            raise AbilitiesError(t('error.too_many_pages'))
 
     async def execute(
         self, name: str, arguments: dict[str, Any]
     ) -> dict[str, Any]:
         """Run the ability with this id and return its result object."""
         if not _valid_id(name) or not isinstance(arguments, dict):
-            raise AbilitiesError('Invalid ability call')
+            raise AbilitiesError(t('error.invalid_call'))
         payload = {'arguments': arguments}
         try:
             request = json.dumps(payload, allow_nan=False)
         except (TypeError, ValueError, RecursionError):
-            raise AbilitiesError('Invalid ability arguments') from None
+            raise AbilitiesError(t('error.invalid_arguments')) from None
         if len(request.encode()) > MAX_REQUEST_BYTES:
-            raise AbilitiesError('Ability arguments exceeded limit')
+            raise AbilitiesError(t('error.arguments_exceeded_limit'))
         async with self._lock:
             response = await self._request(
                 'POST', f'/v1/abilities/{name}:execute', payload=payload
@@ -265,5 +267,5 @@ class AbilitiesClient:
             or not isinstance(request_id, str)
             or not re.fullmatch(r'[a-f0-9]{32}', request_id)
         ):
-            raise AbilitiesError('Invalid ability result')
+            raise AbilitiesError(t('error.invalid_result'))
         return result
