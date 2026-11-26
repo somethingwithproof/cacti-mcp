@@ -13,6 +13,7 @@ from mcp.server.stdio import stdio_server
 
 from cacti_mcp import __version__
 from cacti_mcp.client import AbilitiesClient, AbilitiesError, ability_id
+from cacti_mcp.i18n import set_locale, t
 
 
 def create_server(client: AbilitiesClient) -> Server:
@@ -60,16 +61,16 @@ def create_server(client: AbilitiesClient) -> Server:
             # Only ids from the last verified catalog may be executed.
             schema = schemas.get(params.name)
             if schema is None:
-                raise AbilitiesError('Unknown tool.')
+                raise AbilitiesError(t('error.unknown_tool'))
             try:
                 jsonschema.validate(arguments, schema)
             except jsonschema.ValidationError as error:
                 raise AbilitiesError(
-                    f'Input validation error: {error.message}'
+                    t('error.input_validation', message=error.message)
                 ) from None
             except jsonschema.SchemaError:
                 # A malformed server schema is a tool error, not a crash.
-                raise AbilitiesError('Invalid tool schema.') from None
+                raise AbilitiesError(t('error.invalid_tool_schema')) from None
             result = await client.execute(params.name, arguments)
         except AbilitiesError as error:
             return types.CallToolResult(
@@ -104,25 +105,52 @@ async def serve(endpoint: str, token: str, allow_http: bool) -> None:
             )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description='Serve Cacti MCP plugin abilities as MCP tools over stdio.'
-    )
+def _extract_lang(argv: list[str]) -> str | None:
+    found: str | None = None
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg == '--':
+            break
+        if arg == '--lang' and idx + 1 < len(argv):
+            found = argv[idx + 1]
+            idx += 2
+            continue
+        if arg.startswith('--lang='):
+            found = arg.split('=', 1)[1]
+        idx += 1
+    return found
+
+
+def main(argv: list[str] | None = None) -> None:
+    import sys
+
+    raw_args = sys.argv[1:] if argv is None else argv
+    lang_override = _extract_lang(raw_args)
+    set_locale(lang_override)
+    parser = argparse.ArgumentParser(description=t('cli.description'))
     parser.add_argument('--version', action='version', version=__version__)
     parser.add_argument(
         '--endpoint',
         default=os.environ.get('CACTI_MCP_ENDPOINT'),
-        help='HTTPS URL ending in /plugins/mcp/api.php',
+        help=t('cli.endpoint_help'),
     )
     parser.add_argument(
         '--allow-loopback-http',
         action='store_true',
-        help='Allow HTTP to loopback only, for local testing',
+        help=t('cli.allow_loopback_http_help'),
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        '--lang',
+        default=None,
+        help=t('cli.lang_help'),
+    )
+    args = parser.parse_args(raw_args)
+    if args.lang:
+        set_locale(args.lang)
     token = os.environ.get('CACTI_MCP_TOKEN', '')
     if not args.endpoint or not token:
-        parser.error('Set CACTI_MCP_ENDPOINT and CACTI_MCP_TOKEN')
+        parser.error(t('cli.missing_config'))
     try:
         asyncio.run(serve(args.endpoint, token, args.allow_loopback_http))
     except ValueError as error:

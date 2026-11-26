@@ -124,8 +124,19 @@ uv run --locked cacti-mcp
 
 `--endpoint URL` sets the endpoint instead of `CACTI_MCP_ENDPOINT`.
 `--allow-loopback-http` permits plain HTTP to `localhost`, `127.0.0.1`, or `::1`
-for local testing, and `--version` prints the version. Without both the endpoint
-and `CACTI_MCP_TOKEN`, the command exits with a usage error.
+for local testing, `--lang LOCALE` overrides CLI message localization, and
+`--version` prints the version. Without both the endpoint and `CACTI_MCP_TOKEN`,
+the command exits with a usage error.
+
+### Localization
+
+CLI help and adapter error messages ship in 20 locales (`en`, `de`, `es`, `fr`,
+`it`, `pt-BR`, `nl`, `ru`, `uk`, `ja`, `ko`, `zh-CN`, `zh-TW`, `ar`, `hi`,
+`pl`, `tr`, `sv`, `vi`, `id`) with zero additional dependencies. Locale
+resolution checks `--lang`, then `LC_ALL`, `LC_MESSAGES`, and `LANG`, falling
+back to `en` (`C`/`POSIX` and unknown tags also resolve to `en`). MCP tool
+names, schemas, and successful JSON tool payloads are unaffected; adapter error
+messages returned with `is_error=True` follow the active locale.
 
 The process waits for MCP messages on stdin. An MCP client normally launches it.
 For clients accepting the common `mcpServers` configuration format:
