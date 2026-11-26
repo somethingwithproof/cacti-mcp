@@ -1,4 +1,4 @@
-"""Tests for 45-locale i18n support in cacti-mcp."""
+"""Tests for 48-locale i18n support in cacti-mcp."""
 
 import os
 import re
@@ -31,7 +31,7 @@ def _reset_locale(monkeypatch):
 
 
 def test_supported_locales_count_and_load():
-    assert len(SUPPORTED_LOCALES) == 45
+    assert len(SUPPORTED_LOCALES) == 48
     en = load_catalog(DEFAULT_LOCALE)
     assert len(en) > 0
     for locale in SUPPORTED_LOCALES:
@@ -43,6 +43,26 @@ def test_supported_locales_count_and_load():
                 PLACEHOLDER_RE.findall(en_val)
             ), (locale, key)
             assert 'kadupul' not in catalog[key].lower(), (locale, key)
+
+
+def test_bcms_locales_distinct_and_serbian_cyrillic():
+    bs = load_catalog('bs')
+    hr = load_catalog('hr')
+    sr = load_catalog('sr')
+
+    assert bs != hr
+    assert bs != sr
+    assert hr != sr
+
+    distinct_bs_hr = [k for k in bs if bs[k] != hr[k]]
+    assert len(distinct_bs_hr) >= 15
+
+    cyrillic_re = re.compile(r'[\u0400-\u04FF]')
+    for key, val in sr.items():
+        assert cyrillic_re.search(val), (key, val)
+    for locale, catalog in (('bs', bs), ('hr', hr)):
+        for key, val in catalog.items():
+            assert not cyrillic_re.search(val), (locale, key, val)
 
 
 @pytest.mark.parametrize(
@@ -91,6 +111,20 @@ def test_supported_locales_count_and_load():
         ('ur_PK', 'ur'),
         ('ms_MY.UTF-8', 'ms'),
         ('tl_PH.UTF-8', 'fil'),
+        ('bs', 'bs'),
+        ('bs-BA', 'bs'),
+        ('bs_BA.UTF-8', 'bs'),
+        ('hr', 'hr'),
+        ('hr-HR', 'hr'),
+        ('hr_HR.UTF-8', 'hr'),
+        ('sr', 'sr'),
+        ('sr-RS', 'sr'),
+        ('sr_RS.UTF-8', 'sr'),
+        ('sr-Cyrl', 'sr'),
+        ('sr-Cyrl-RS', 'sr'),
+        ('sr-Latn', 'sr'),
+        ('sr-Latn-RS', 'sr'),
+        ('sr_RS@latin', 'sr'),
         ('xx_YY', 'en'),
     ],
 )

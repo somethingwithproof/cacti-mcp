@@ -54,6 +54,9 @@ SUPPORTED_LOCALES: tuple[str, ...] = (
     'ur',
     'ms',
     'fil',
+    'bs',
+    'hr',
+    'sr',
 )
 
 _LOCALE_BY_LOWER: dict[str, str] = {
